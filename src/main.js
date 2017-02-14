@@ -249,7 +249,7 @@ class Assessment extends Task {
 
     onUpdate() {
         FORM_SPREADSHEET.getSheets().then(function (sheets) {
-            var sheet = sheets[this._assessmentIndex];
+            var sheet = sheets[(sheets.length - 1) - this._assessmentIndex];
             
             return FORM_SPREADSHEET.getValues(sheet.properties.title, 'B1:' + Spreadsheet.getLetter(sheet.properties.gridProperties.columnCount - 1));
         }.bind(this)).then(function (obj) {
