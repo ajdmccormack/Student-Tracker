@@ -6,4 +6,4 @@ const SHEET = 'Sheet1';
 const ASSIGNMENT_ID = '~';
 const ASSESSMENT_ID = '`';
 
-document.body.appendChild(Object.assign(document.createElement('script'), {src: 'https://cdn.rawgit.com/Colo553/Student-Tracker/5a283ba0/src/main.js', defer: 'defer', async: 'async'}));
+document.body.appendChild(Object.assign(document.createElement('script'), {src: 'https://cdn.rawgit.com/Colo553/Student-Tracker/d26c9256/src/main.js', defer: 'defer', async: 'async'}));
