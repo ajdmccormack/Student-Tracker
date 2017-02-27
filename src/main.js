@@ -235,10 +235,11 @@ class Assessment extends Task {
     enable() {
         super.enable();
 
-        clearInterval(this._id);
-        this.onUpdate();
-
-        this._id = setInterval(this.onUpdate.bind(this), 5000);
+        if (!this._isCompleted) {
+        	this.onUpdate();
+        	
+        	this._id = setInterval(this.onUpdate.bind(this), 30000);
+        }
     }
 
     disable() {
@@ -293,6 +294,8 @@ class Assessment extends Task {
                 }.bind(this));
 
                 this._isCompleted = success;
+
+                clearInterval(this._id);
 
                 TASK_CONTAINER.update();
             }
