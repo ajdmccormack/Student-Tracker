@@ -475,7 +475,7 @@ function updateSignInStatus(isSignedIn) {
         		var period = -1;
 
         		do {
-        			period = prompt('In which class period are you? (1, 2, 4, 5, 7)', '');
+        			period = prompt(PROMPT_PERIOD);
 
         			if (period === null) {
         				gapi.auth2.getAuthInstance().signOut();
