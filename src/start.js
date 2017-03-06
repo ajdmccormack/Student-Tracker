@@ -6,5 +6,6 @@ const SHEET = 'Sheet1';
 const PROMPT_PERIOD = 'In which class period are you? (1, 2, 4, 5, 7)';
 const ASSIGNMENT_ID = '~';
 const ASSESSMENT_ID = '`';
+const CLONE_ID = '^';
 
 document.body.appendChild(Object.assign(document.createElement('script'), {src: 'https://rawgit.com/Colo553/Student-Tracker/master/src/main.js', defer: 'defer', async: 'async'}));
