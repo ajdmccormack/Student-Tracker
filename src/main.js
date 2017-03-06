@@ -1,5 +1,15 @@
 'use strict';
 
+const API_KEY = 'AIzaSyD0kTBtlNzVae3u1LYcjZKrre563mcxsVo';
+const CLIENT_ID = '627343722694-fni1on670josisrndul45j23n0bim9a5.apps.googleusercontent.com';
+const MAIN_SPREADSHEET_ID = '1IIjBsBJrkgaGORKvsXruJpk-6xKC3clPnW_-AyqpUMw';
+const FORM_SPREADSHEET_ID = '1bJRdFCGP2yocIVXw6ewsDBALeUkYfrVoorf5DnBpAc4';
+const SHEET = 'Sheet1';
+const PROMPT_PERIOD = 'In which class period are you? (1, 2, 4, 5, 7)';
+const ASSIGNMENT_ID = '~';
+const ASSESSMENT_ID = '`';
+const CLONE_ID = '^';
+
 class Spreadsheet {
     constructor (spreadsheetId) {
         this.spreadsheetId = spreadsheetId;
@@ -80,59 +90,71 @@ class Spreadsheet {
     }
 }
 
-class TaskContainer {
+class ComponentContainer {
     constructor () {
-        this._tasks = [];
+        this._components = [];
     }
 
-    add(task) {
-        this._tasks[this._tasks.length] = task;
+    add(component) {
+        this._components[this._components.length] = component;
     }
 
     get(index) {
-        return this._tasks[index];
+        return this._components[index];
+    }
+
+    getByType(type) {
+        var components = [];
+
+        this._components.forEach(function (e) {
+            if (e.types.includes(type)) {
+                components[components.length] = e;
+            }
+        });
+
+        return components;
     }
 
     update() {
         var lock = false;
 
-        for (var task of this._tasks) {
+        for (var component of this._components) {
             if (!lock) {
-                task.enable();
+                component.enable();
             } else {
-                task.disable();
+                component.disable();
             }
 
-            if (task instanceof Assessment && !task.isCompleted) {
+            if (component instanceof Assessment && !component.isCompleted) {
                 lock = true;
             }
         }
     }
 
     disableAll() {
-        this._tasks.forEach(function (task) {
-            task.disable();
+        this._components.forEach(function (component) {
+            component.disable();
         });
     }
 
     get size() {
-        return this._tasks.length;
+        return this._components.length;
     }
 }
 
-class Task {
-    constructor (index, element, id) {
-        this._index = index;
-        this._element = element;
+class Component {
+	constructor (index, element, id) {
+		this._index = index;
+	    this._element = element;
 
-        this._isCompleted = false;
+        this._types = ['Component'];
 
-        this._allChildren = function findAllChildren(parent, children) {
-            if (parent.childElementCount == 0) {
-                return children;
-            } else {
-                Array.from(parent.children).forEach(function (child) {
-                    children[children.length] = child;
+	    this._allChildren = function findAllChildren(parent, children) {
+	        if (parent.childElementCount == 0) {
+	            return children;
+	        } else {
+	            Array.from(parent.children).forEach(function (child) {
+	                children[children.length] = child;
 
                     findAllChildren(child, children);
                 });
@@ -148,9 +170,9 @@ class Task {
                 break;
             }
         }
-    }
+	}
 
-    enable() {
+	enable() {
         this._element.onclick = function () {};
         this._element.style.setProperty('color', '');
 
@@ -174,6 +196,20 @@ class Task {
         });
     }
 
+    get types() {
+        return this._types;
+    }
+}
+
+class Task extends Component {
+    constructor (index, element, id) {
+    	super(index, element, id);
+
+        this._types[this._types.length] = 'Task';
+
+        this._isCompleted = false;
+    }
+
     get isCompleted() {
         return this._isCompleted;
     }
@@ -186,6 +222,8 @@ class Task {
 class Assignment extends Task {
     constructor (index, element) {
         super(index, element, ASSIGNMENT_ID);
+
+        this._types[this._types.length] = 'Assignment';
 
         this._checkbox = document.createElement('input');
         this._checkbox.type = 'checkbox';
@@ -229,6 +267,8 @@ class Assessment extends Task {
 
         this._assessmentIndex = assessmentIndex;
 
+        this._types[this._types.length] = 'Assessment';
+
         this._id = -1;
     }
 
@@ -236,9 +276,9 @@ class Assessment extends Task {
         super.enable();
 
         if (!this._isCompleted) {
-        	this.onUpdate();
-        	
-        	this._id = setInterval(this.onUpdate.bind(this), 30000);
+            this.onUpdate();
+            
+            this._id = setInterval(this.onUpdate.bind(this), 30000);
         }
     }
 
@@ -297,9 +337,23 @@ class Assessment extends Task {
 
                 clearInterval(this._id);
 
-                TASK_CONTAINER.update();
+                COMPONENT_CONTAINER.update();
             }
         }.bind(this));
+    }
+}
+
+class Clone extends Component {
+    constructor (index, element, id) {
+        super(index, element, CLONE_ID);
+    }
+
+    enable() {
+        super.enable();
+
+        this._element.onclick = function() {
+            
+        }
     }
 }
 
@@ -358,7 +412,7 @@ const SCRIPT = document.createElement('script');
 const MAIN_SPREADSHEET = new Spreadsheet(MAIN_SPREADSHEET_ID);
 const FORM_SPREADSHEET = new Spreadsheet(FORM_SPREADSHEET_ID);
 
-const TASK_CONTAINER = new TaskContainer();
+const COMPONENT_CONTAINER = new ComponentContainer();
 
 const ELEMENTS = [];
 const CHECKBOXES = [];
@@ -402,18 +456,26 @@ function run() {
 		}
 
 		if (text.includes(ASSIGNMENT_ID)) {
-			TASK_CONTAINER.add(new Assignment(index, element));
+			COMPONENT_CONTAINER.add(new Assignment(index, element));
 
 	        index++;
-		} else if (text.includes(ASSESSMENT_ID)) {
-            TASK_CONTAINER.add(new Assessment(index, element, assessmentIndex));
+		}
+
+        if (text.includes(ASSESSMENT_ID)) {
+            COMPONENT_CONTAINER.add(new Assessment(index, element, assessmentIndex));
 
             index++;
             assessmentIndex++;
         }
+
+        if (text.includes(CLONE_ID)) {
+            COMPONENT_CONTAINER.add(new Clone(index, element));
+
+            index++;
+        }
 	});
 
-	TASK_CONTAINER.disableAll();
+	COMPONENT_CONTAINER.disableAll();
 
 	document.body.appendChild(SCRIPT);
 }
@@ -466,25 +528,25 @@ function updateSignInStatus(isSignedIn) {
 
         student.getData().then(function (data) {
         	if (data != null) {
-        		data.forEach(function (value, i) {
-        			if (i < TASK_CONTAINER.size && value == '5') {
-        				TASK_CONTAINER.get(i).setCompleted(true);
+                var tasks = COMPONENT_CONTAINER.getByType('Task');
+        		
+                data.forEach(function (value, i) {
+        			if (i < tasks.size && value == '5') {
+        				tasks[i].setCompleted(true);
         			}
         		});
         	} else {
         		var period = -1;
 
         		do {
-        			period = prompt(PROMPT_PERIOD);
+                    period = prompt(PROMPT_PERIOD);
 
-        			if (period === null) {
-        				gapi.auth2.getAuthInstance().signOut();
+                    if (period === null) {
+                        gapi.auth2.getAuthInstance().signOut();
 
-        				return;
-        			} else {
-        				period = Number(period);
-        			}
-        		} while (!Number.isInteger(period) || (period < 1 || period > 7));
+                        return;
+                    }
+                } while (!period == 'admin' || !Number.isInteger(period = Number(period)) || (period < 1 || period > 7));
 
         		student.period = period;
 
@@ -493,13 +555,13 @@ function updateSignInStatus(isSignedIn) {
                 });
         	}
 
-        	TASK_CONTAINER.update();
+        	COMPONENT_CONTAINER.update();
         });
 
         buttonSignIn.style.display = 'none';
         buttonSignOut.style.display = '';
     } else {
-        TASK_CONTAINER.disableAll();
+        COMPONENT_CONTAINER.disableAll();
 
         buttonSignOut.style.display = 'none';
         buttonSignIn.style.display = '';
