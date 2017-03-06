@@ -343,7 +343,7 @@ class Clone extends Component {
 
         this._element.onclick = function() {
 
-        }
+        };
     }
 }
 
@@ -536,7 +536,7 @@ function updateSignInStatus(isSignedIn) {
 
                         return;
                     }
-                } while (!period == 'admin' || !Number.isInteger(period = Number(period)) || (period < 1 || period > 7));
+                } while (!period == 'admin' && (!Number.isInteger(period = Number(period)) || (period < 1 || period > 7)));
 
         		student.period = period;
 
