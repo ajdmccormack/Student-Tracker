@@ -263,7 +263,7 @@ class Assessment extends Task {
     }
 
     enable() {
-        console.log('Enabling Assessment: ' + this);
+        // console.log('Enabling Assessment: ', this);
 
         super.enable();
 
@@ -272,12 +272,12 @@ class Assessment extends Task {
             
             this._id = setInterval(this.onUpdate.bind(this), 30000);
 
-            console.log('Assessment interval id: ' + this._id);
+            // console.log('Assessment interval id: ' + this._id);
         }
     }
 
     disable() {
-        console.log('Disabling Assessment: ' + this);
+        // console.log('Disabling Assessment: ', this);
 
         super.disable();
 
@@ -285,12 +285,12 @@ class Assessment extends Task {
     }
 
     onUpdate() {
-        console.log('Updating Assessment: ' + this);
+        // console.log('Updating Assessment: ', this);
 
         FORM_SPREADSHEET.getSheets().then(function (sheets) {
             var sheet = sheets[this._assessmentIndex];
 
-            console.log('Assessment sheet: ' + sheet);
+            // console.log('Assessment sheet: ', sheet);
             
             return FORM_SPREADSHEET.getValues(sheet.properties.title, 'B1:' + Spreadsheet.getLetter(sheet.properties.gridProperties.columnCount - 1));
         }.bind(this)).then(function (obj) {
@@ -324,7 +324,7 @@ class Assessment extends Task {
                 if (row[emailIndex] == student.email && Number(row[scoreIndex].substring(0, row[scoreIndex].indexOf('/') - 1)) == Number(row[scoreIndex].substring(row[scoreIndex].indexOf('/') + 2))) {
                     success = true;
 
-                    console.log('Assessment: found student and is completed');
+                    // console.log('Assessment: found student and is completed');
 
                     break;
                 }
@@ -343,7 +343,7 @@ class Assessment extends Task {
             }
 
             if (!success) {
-                console.log('Assessment: did not find student or is not completed');
+                // console.log('Assessment: did not find student or is not completed');
             }
         }.bind(this));
     }
@@ -539,7 +539,7 @@ function updateSignInStatus(isSignedIn) {
                 var tasks = COMPONENT_CONTAINER.getByType('Task');
         		
                 data.forEach(function (value, i) {
-        			if (i < tasks.size && value == '5') {
+        			if (i < tasks.length && value == '5') {
         				tasks[i].setCompleted(true);
         			}
         		});
