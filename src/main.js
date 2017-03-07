@@ -272,7 +272,7 @@ class Assessment extends Task {
             
             this._id = setInterval(this.onUpdate.bind(this), 30000);
 
-            console.log('Assessment interval id: ' this._id);
+            console.log('Assessment interval id: ' + this._id);
         }
     }
 
