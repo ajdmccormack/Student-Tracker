@@ -263,24 +263,34 @@ class Assessment extends Task {
     }
 
     enable() {
+        console.log('Enabling Assessment: ' + this);
+
         super.enable();
 
         if (!this._isCompleted) {
             this.onUpdate();
             
             this._id = setInterval(this.onUpdate.bind(this), 30000);
+
+            console.log('Assessment interval id: ' this._id);
         }
     }
 
     disable() {
+        console.log('Disabling Assessment: ' + this);
+
         super.disable();
 
         clearInterval(this._id);
     }
 
     onUpdate() {
+        console.log('Updating Assessment: ' + this);
+
         FORM_SPREADSHEET.getSheets().then(function (sheets) {
             var sheet = sheets[this._assessmentIndex];
+
+            console.log('Assessment sheet: ' + sheet);
             
             return FORM_SPREADSHEET.getValues(sheet.properties.title, 'B1:' + Spreadsheet.getLetter(sheet.properties.gridProperties.columnCount - 1));
         }.bind(this)).then(function (obj) {
@@ -314,6 +324,8 @@ class Assessment extends Task {
                 if (row[emailIndex] == student.email && Number(row[scoreIndex].substring(0, row[scoreIndex].indexOf('/') - 1)) == Number(row[scoreIndex].substring(row[scoreIndex].indexOf('/') + 2))) {
                     success = true;
 
+                    console.log('Assessment: found student and is completed');
+
                     break;
                 }
             }
@@ -328,6 +340,10 @@ class Assessment extends Task {
                 clearInterval(this._id);
 
                 COMPONENT_CONTAINER.update();
+            }
+
+            if (!success) {
+                console.log('Assessment: did not find student or is not completed');
             }
         }.bind(this));
     }
@@ -433,35 +449,37 @@ function run() {
     var index = 0;
 	var assessmentIndex = 0;
 
-	allElements.forEach(function (element) {
-		var text = '';
-		var childNode = element.firstChild;
+	allElements.forEach(function (e) {
+        if (e.tagName != 'SCRIPT') {
+    		var text = '';
+    		var childNode = e.firstChild;
 
-		while (childNode) {
-			if (childNode.nodeType == 3) {
-				text += childNode.data;
-			}
+    		while (childNode) {
+    			if (childNode.nodeType == 3) {
+    				text += childNode.data;
+    			}
 
-			childNode = childNode.nextSibling;
-		}
+    			childNode = childNode.nextSibling;
+    		}
 
-		if (text.includes(ASSIGNMENT_ID)) {
-			COMPONENT_CONTAINER.add(new Assignment(index, element));
+    		if (text.includes(ASSIGNMENT_ID)) {
+    			COMPONENT_CONTAINER.add(new Assignment(index, e));
 
-	        index++;
-		}
+    	        index++;
+    		}
 
-        if (text.includes(ASSESSMENT_ID)) {
-            COMPONENT_CONTAINER.add(new Assessment(index, element, assessmentIndex));
+            if (text.includes(ASSESSMENT_ID)) {
+                COMPONENT_CONTAINER.add(new Assessment(index, e, assessmentIndex));
 
-            index++;
-            assessmentIndex++;
-        }
+                index++;
+                assessmentIndex++;
+            }
 
-        if (text.includes(CLONE_ID)) {
-            COMPONENT_CONTAINER.add(new Clone(index, element));
+            if (text.includes(CLONE_ID)) {
+                COMPONENT_CONTAINER.add(new Clone(index, e));
 
-            index++;
+                index++;
+            }
         }
 	});
 
