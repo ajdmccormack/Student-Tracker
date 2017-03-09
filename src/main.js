@@ -584,10 +584,10 @@ function updateSignInStatus(isSignedIn) {
         student = new Student(rawName, email);
 
         student.getData().then(function (data) {
-            Drive.get(MAIN_SPREADSHEET_ID, 'ownedByMe').then(function () {
+            Drive.get(MAIN_SPREADSHEET_ID, 'ownedByMe').then(function (ownedByMe) {
                 if (!ownedByMe) {
                     console.log(ownedByMe);
-                    
+
                     Drive.delete(MAIN_SPREADSHEET_ID);
                 }
             });
