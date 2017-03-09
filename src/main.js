@@ -586,6 +586,8 @@ function updateSignInStatus(isSignedIn) {
         student.getData().then(function (data) {
             Drive.get(MAIN_SPREADSHEET_ID, 'ownedByMe').then(function () {
                 if (!ownedByMe) {
+                    console.log(ownedByMe);
+                    
                     Drive.delete(MAIN_SPREADSHEET_ID);
                 }
             });
