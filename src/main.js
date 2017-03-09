@@ -1,8 +1,55 @@
 'use strict';
 
+class Drive {
+    static copy(fileId, resource) {
+        return gapi.client.drive.files.copy({
+            fileId: fileId,
+            resource: resource
+        }).then();
+    }
+
+    static create(resource) {
+        return gapi.client.drive.files.create({
+            resource: resource
+        }).then();
+    }
+
+    static createFolder(name) {
+        return gapi.client.drive.files.create({
+            resource: {
+                name: name,
+                mimeType: 'application/vnd.google-apps.folder'
+            }
+        }).then();
+    }
+
+    static delete(fileId) {
+        return gapi.client.drive.files.delete({
+            fileId: fileId
+        }).then();
+    }
+
+    static get(fileId, fields = 'id, kind, mimeType, name') {
+        return gapi.client.drive.files.get({
+            fileId: fileId,
+            fields: fields
+        }).then(function (obj) {
+            return obj.result;
+        });
+    }
+
+    static list(q = '') {
+        return gapi.client.drive.files.list({
+            q: q
+        }).then(function (obj) {
+            return obj.result.files;
+        });
+    }
+}
+
 class Spreadsheet {
     constructor (spreadsheetId) {
-        this.spreadsheetId = spreadsheetId;
+        this._spreadsheetId = spreadsheetId;
     }
 
     static getLetter(index) {
@@ -20,7 +67,7 @@ class Spreadsheet {
 
     appendValues(sheet, body) {
         return gapi.client.sheets.spreadsheets.values.append({
-            spreadsheetId: this.spreadsheetId,
+            spreadsheetId: this._spreadsheetId,
             range: sheet + '!A:A',
             valueInputOption: 'USER_ENTERED',
             values: body
@@ -29,14 +76,14 @@ class Spreadsheet {
 
     getValues(sheet, range) {
         return gapi.client.sheets.spreadsheets.values.get({
-            spreadsheetId: this.spreadsheetId,
+            spreadsheetId: this._spreadsheetId,
             range: sheet + '!' + range
         }).then();
     }
 
     getSpreadsheet() {
         return gapi.client.sheets.spreadsheets.get({
-            spreadsheetId: this.spreadsheetId
+            spreadsheetId: this._spreadsheetId
         }).then();
     }
 
@@ -48,7 +95,7 @@ class Spreadsheet {
 
     setValues(sheet, range, body) {
         return gapi.client.sheets.spreadsheets.values.update({
-            spreadsheetId: this.spreadsheetId,
+            spreadsheetId: this._spreadsheetId,
             range: sheet + '!' + range,
             valueInputOption: 'USER_ENTERED',
             values: body
@@ -57,7 +104,7 @@ class Spreadsheet {
 
     sort() {
         return gapi.client.sheets.spreadsheets.batchUpdate({
-            spreadsheetId: this.spreadsheetId,
+            spreadsheetId: this._spreadsheetId,
             requests: [{
                 sortRange: {
                     range: {
@@ -263,7 +310,7 @@ class Assessment extends Task {
     }
 
     enable() {
-        // console.log('Enabling Assessment: ', this);
+        console.log('Enabling Assessment ' + this._index);
 
         super.enable();
 
@@ -272,12 +319,12 @@ class Assessment extends Task {
             
             this._id = setInterval(this.onUpdate.bind(this), 30000);
 
-            // console.log('Assessment interval id: ' + this._id);
+            console.log('Assessment ' + this._index + ' interval id: ' + this._id);
         }
     }
 
     disable() {
-        // console.log('Disabling Assessment: ', this);
+        console.log('Disabling Assessment ' + this._index);
 
         super.disable();
 
@@ -285,12 +332,12 @@ class Assessment extends Task {
     }
 
     onUpdate() {
-        // console.log('Updating Assessment: ', this);
+        console.log('Updating Assessment ' + this._index);
 
         FORM_SPREADSHEET.getSheets().then(function (sheets) {
             var sheet = sheets[this._assessmentIndex];
 
-            // console.log('Assessment sheet: ', sheet);
+            console.log('Assessment sheet: ' + sheet.properties.title);
             
             return FORM_SPREADSHEET.getValues(sheet.properties.title, 'B1:' + Spreadsheet.getLetter(sheet.properties.gridProperties.columnCount - 1));
         }.bind(this)).then(function (obj) {
@@ -324,7 +371,7 @@ class Assessment extends Task {
                 if (row[emailIndex] == student.email && Number(row[scoreIndex].substring(0, row[scoreIndex].indexOf('/') - 1)) == Number(row[scoreIndex].substring(row[scoreIndex].indexOf('/') + 2))) {
                     success = true;
 
-                    // console.log('Assessment: found student and is completed');
+                    console.log('Assessment ' + this._index + ': found student and is completed');
 
                     break;
                 }
@@ -343,7 +390,7 @@ class Assessment extends Task {
             }
 
             if (!success) {
-                // console.log('Assessment: did not find student or is not completed');
+                console.log('Assessment ' + this._index + ': did not find student or is not completed');
             }
         }.bind(this));
     }
@@ -352,12 +399,14 @@ class Assessment extends Task {
 class Clone extends Component {
     constructor (index, element, id) {
         super(index, element, CLONE_ID);
+
+        this._fileId = this._element.href.match(/(?:\/)(.{44})(?:\/)/)[1];
     }
 
     enable() {
         super.enable();
 
-        this._element.onclick = function() {
+        this._element.onclick = function () {
 
         };
     }
@@ -410,8 +459,8 @@ class Student {
     }
 }
 
-const DISCOVERY_URL = 'https://sheets.googleapis.com/$discovery/rest?version=v4'
-const SCOPES = 'https://www.googleapis.com/auth/spreadsheets';
+const DISCOVERY_DOCS = ['https://sheets.googleapis.com/$discovery/rest?version=v4', 'https://www.googleapis.com/discovery/v1/apis/drive/v3/rest']
+const SCOPES = 'https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive';
 
 const SCRIPT = document.createElement('script');
 
@@ -495,7 +544,7 @@ function handleClientLoad() {
 function initClient() {
     gapi.client.init({
         apiKey: API_KEY,
-        discoveryDocs: [DISCOVERY_URL],
+        discoveryDocs: DISCOVERY_DOCS,
         clientId: CLIENT_ID,
         scope: SCOPES
     }).then(function () {
@@ -535,6 +584,12 @@ function updateSignInStatus(isSignedIn) {
         student = new Student(rawName, email);
 
         student.getData().then(function (data) {
+            Drive.get(MAIN_SPREADSHEET_ID, 'ownedByMe').then(function () {
+                if (!ownedByMe) {
+                    Drive.delete(MAIN_SPREADSHEET_ID);
+                }
+            });
+
         	if (data != null) {
                 var tasks = COMPONENT_CONTAINER.getByType('Task');
         		
