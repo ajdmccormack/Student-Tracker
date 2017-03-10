@@ -445,11 +445,11 @@ class Clone extends Component {
                         id: HOSTNAME
                     }
                 }).then(function (file) {
-                    /* Drive.Permissions.create(file.id, {
+                    Drive.Permissions.create(file.id, {
                         role: 'writer',
                         type: 'user',
                         emailAddress: TEACHER_EMAIL
-                    }); */
+                    });
 
                     return file.id;
                 });
