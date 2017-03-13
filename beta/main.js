@@ -271,8 +271,7 @@ class ComponentContainer {
 }
 
 class Component {
-	constructor (index, element, id) {
-		this._index = index;
+	constructor (element, id) {
 	    this._element = element;
 
         this._types = ['Component'];
@@ -331,7 +330,9 @@ class Component {
 
 class Task extends Component {
     constructor (index, element, id) {
-    	super(index, element, id);
+    	super(element, id);
+
+        this._index = index;
 
         this._types[this._types.length] = 'Task';
 
@@ -488,8 +489,8 @@ class Assessment extends Task {
 }
 
 class Clone extends Component {
-    constructor (index, element, id) {
-        super(index, element, CLONE_ID);
+    constructor (element) {
+        super(element, CLONE_ID);
 
         this._element = function findElement(e) {
             if (e.tagName == 'A') {
@@ -507,7 +508,6 @@ class Clone extends Component {
         this._types[this._types.length] = 'Clone';
 
         this._fileId = this._element.href.match(/(?:d\/|id=)(.{44})/)[1];
-        this._init = false;
     }
 
     onSignIn(childFolderId) {
@@ -651,9 +651,7 @@ function run() {
             }
 
             if (text.includes(CLONE_ID)) {
-                COMPONENT_CONTAINER.add(new Clone(index, e));
-
-                index++;
+                COMPONENT_CONTAINER.add(new Clone(e));
             }
         }
 	});
