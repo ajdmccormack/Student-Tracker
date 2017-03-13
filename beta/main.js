@@ -1,5 +1,16 @@
 'use strict';
 
+const API_KEY = 'AIzaSyD0kTBtlNzVae3u1LYcjZKrre563mcxsVo';
+const CLIENT_ID = '627343722694-fni1on670josisrndul45j23n0bim9a5.apps.googleusercontent.com';
+const MAIN_SPREADSHEET_ID = '1IIjBsBJrkgaGORKvsXruJpk-6xKC3clPnW_-AyqpUMw';
+const FORM_SPREADSHEET_ID = '1bJRdFCGP2yocIVXw6ewsDBALeUkYfrVoorf5DnBpAc4';
+const TEACHER_EMAIL = 'amccormack@scarboroughschools.org';
+const SHEET = 'Sheet1';
+const PROMPT_PERIOD = 'In which class period are you? (1, 2, 4, 5, 7)';
+const ASSIGNMENT_ID = '~';
+const ASSESSMENT_ID = '`';
+const CLONE_ID = '^';
+
 class Drive {}
 
 Drive.Files = class {
@@ -184,11 +195,79 @@ class ComponentContainer {
     }
 
     onSignIn() {
-        this._components.forEach(function (component) {
-            if (component instanceof Clone) {
-                component.onSignIn();
-            }
-        });
+        var clones = this.getByType('Clone');
+        var chain;
+
+        if (clones.length != 0) {
+            const HOSTNAME = window.location.hostname.match(/\.(.+)\./)[1];
+            const PATHNAME = window.location.pathname.match(/\/([^.]*)/)[1];
+
+            var parent = Drive.Files.list("mimeType = 'application/vnd.google-apps.folder' and properties has {key = 'id' and value = '" + HOSTNAME + "'}").then(function (files) {
+                if (files.length != 0) {
+                    console.log('CLONE: Found parent');
+
+                    return files[0].id;
+                } else {
+                    console.log('CLONE: Not Found parent');
+
+                    return Drive.Files.createFolder(HOSTNAME, {
+                        properties: {
+                            id: HOSTNAME
+                        }
+                    }).then(function (file) {
+                        Drive.Permissions.create(file.id, {
+                            role: 'writer',
+                            type: 'user',
+                            emailAddress: TEACHER_EMAIL
+                        });
+
+                        return file.id;
+                    });
+                }
+            }.bind(this));
+
+            var child = parent.then(function (parentFolderId) {
+                return Drive.Files.list("mimeType = 'application/vnd.google-apps.folder' and '" + parentFolderId + "' in parents and properties has {key = 'id' and value = '" + PATHNAME + "'}")
+            });
+
+            var folder = Promise.all([parent, child]).then(function (values) {
+                var parentFolderId = values[0];
+                var files = values[1];
+
+                if (files.length != 0) {
+                    console.log('CLONE: Found child');
+
+                    return files[0].id;
+                } else {
+                    console.log('CLONE: Not Found child');
+
+                    return Drive.Files.createFolder(document.title, {
+                        properties: {
+                            id: PATHNAME
+                        },
+                        parents: [
+                            parentFolderId
+                        ]
+                    }).then(function (file) {
+                        return file.id;
+                    });
+                }
+            }.bind(this)).then(function (childFolderId) {
+                chain = clones[0].onSignIn(childFolderId);
+
+                for (let i = 1; i < clones.length; i += (i + 2 < clones.length) ? 3 : 1) {
+                    chain = chain.then(function () {
+                        clones[i].onSignIn(childFolderId);
+                        
+                        if (i + 2 < clones.length) {
+                            clones[i + 1].onSignIn(childFolderId);
+
+                            return clones[i + 2].onSignIn(childFolderId);
+                        }
+                    });
+                }
+            });
+        }
     }
 
     disableAll() {
@@ -333,7 +412,7 @@ class Assessment extends Task {
     }
 
     enable() {
-        console.log('Enabling Assessment ' + this._index);
+        console.log('ASSESSMENT ' + this._index + ': enabling');
 
         super.enable();
 
@@ -342,12 +421,12 @@ class Assessment extends Task {
             
             this._id = setInterval(this.onUpdate.bind(this), 30000);
 
-            console.log('Assessment ' + this._index + ' interval id: ' + this._id);
+            console.log('ASSESSMENT ' + this._index + ': interval id ' + this._id);
         }
     }
 
     disable() {
-        console.log('Disabling Assessment ' + this._index);
+        console.log('ASSESSMENT ' + this._index + ': disabling');
 
         super.disable();
 
@@ -355,12 +434,12 @@ class Assessment extends Task {
     }
 
     onUpdate() {
-        console.log('Updating Assessment ' + this._index);
+        console.log('ASSESSMENT ' + this._index + ': updating');
 
         FORM_SPREADSHEET.getSheets().then(function (sheets) {
             var sheet = sheets[this._assessmentIndex];
 
-            console.log('Assessment sheet: ' + sheet.properties.title);
+            console.log('ASSESSMENT ' + this._index + ': sheet ' + sheet.properties.title);
             
             return FORM_SPREADSHEET.getValues(sheet.properties.title, 'B1:' + Spreadsheet.getLetter(sheet.properties.gridProperties.columnCount - 1));
         }.bind(this)).then(function (obj) {
@@ -394,7 +473,7 @@ class Assessment extends Task {
                 if (row[emailIndex] == student.email && Number(row[scoreIndex].substring(0, row[scoreIndex].indexOf('/') - 1)) == Number(row[scoreIndex].substring(row[scoreIndex].indexOf('/') + 2))) {
                     success = true;
 
-                    console.log('Assessment ' + this._index + ': found student and is completed');
+                    console.log('ASSESSMENT ' + this._index + ': found student and is completed');
 
                     break;
                 }
@@ -413,7 +492,7 @@ class Assessment extends Task {
             }
 
             if (!success) {
-                console.log('Assessment ' + this._index + ': did not find student or is not completed');
+                console.log('ASSESSMENT ' + this._index + ': did not find student or is not completed');
             }
         }.bind(this));
     }
@@ -423,73 +502,27 @@ class Clone extends Component {
     constructor (index, element, id) {
         super(index, element, CLONE_ID);
 
+        this._element = function findElement(e) {
+            if (e.tagName == 'A') {
+                return e;
+            } else {
+                for (var e of Array.from(e.children)) {
+                    var ret = findElement(e);
+
+                    if (ret != undefined) {
+                        return ret;
+                    }
+                }
+            }
+        }(this._element);
         this._types[this._types.length] = 'Clone';
 
         this._fileId = this._element.href.match(/(?:\/)(.{44})(?:\/)/)[1];
+        this._init = false;
     }
 
-    onSignIn() {
-        const HOSTNAME = window.location.hostname;
-        const PATHNAME = window.location.pathname.match(/\/([^.]*)/)[1];
-
-        var parent = Drive.Files.list("properties has {key = 'id' and value = '" + HOSTNAME + "'} and mimeType = 'application/vnd.google-apps.folder'").then(function (files) {
-            if (files.length != 0) {
-                console.log('CLONE ' + this._index + ': Found parent');
-
-                return files[0].id;
-            } else {
-                console.log('CLONE ' + this._index + ': Not Found parent');
-
-                return Drive.Files.createFolder(HOSTNAME, {
-                    properties: {
-                        id: HOSTNAME
-                    }
-                }).then(function (file) {
-                    Drive.Permissions.create(file.id, {
-                        role: 'writer',
-                        type: 'user',
-                        emailAddress: TEACHER_EMAIL
-                    });
-
-                    return file.id;
-                });
-            }
-        }.bind(this));
-
-        var child = Drive.Files.list("properties has {key = 'id' and value = '" + PATHNAME + "'} and mimeType = 'application/vnd.google-apps.folder'");
-
-        var folder = Promise.all([parent, child]).then(function (values) {
-            var parentFolderId = values[0];
-            var files = values[1];
-
-            if (files.length != 0) {
-                console.log('CLONE ' + this._index + ': Found child');
-
-                return files[0].id;
-            } else {
-                console.log('CLONE ' + this._index + ': Not Found child');
-
-                return Drive.Files.createFolder(PATHNAME, {
-                    properties: {
-                        id: PATHNAME
-                    },
-                    parents: [
-                        parentFolderId
-                    ]
-                }).then(function (file) {
-                    return file.id;
-                });
-            }
-        }.bind(this));
-
-        var files = folder.then(function (childFolderId) {
-            return Drive.Files.list("'" + childFolderId + "' in parents and properties has {key = 'id' and value = '" + this._fileId + "'}");
-        }.bind(this));
-
-        Promise.all([folder, files]).then(function (values) {
-            var childFolderId = values[0];
-            var files = values[1];
-
+    onSignIn(childFolderId) {
+        var ret = Drive.Files.list("'" + childFolderId + "' in parents and properties has {key = 'id' and value = '" + this._fileId + "'}").then(function (files) {
             if (files.length != 0) {
                 console.log('CLONE ' + this._index + ': Found file');
 
@@ -511,6 +544,8 @@ class Clone extends Component {
         }.bind(this)).then(function (file) {
             this._element.href = file.webViewLink;
         }.bind(this));
+
+        return ret;
     }
 }
 
