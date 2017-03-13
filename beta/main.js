@@ -310,7 +310,7 @@ class Component {
         });
     }
 
-    disable()  {
+    disable() {
         this._element.onclick = function (e) {
             e.preventDefault();
         };
@@ -505,6 +505,9 @@ class Clone extends Component {
             }
         }(this._element);
         this._types[this._types.length] = 'Clone';
+
+        console.log(element);
+        console.log(this._element);
 
         this._fileId = this._element.href.match(/(?:\/)(.{44})(?:\/)/)[1];
         this._init = false;
