@@ -722,11 +722,11 @@ function updateSignInStatus(isSignedIn) {
         COMPONENT_CONTAINER.onSignIn();
 
         student.getData().then(function (data) {
-            Drive.Files.get(MAIN_SPREADSHEET_ID, 'ownedByMe').then(function (file) {
+            /* Drive.Files.get(MAIN_SPREADSHEET_ID, 'ownedByMe').then(function (file) {
                 if (!file.ownedByMe) {
                     Drive.Files.delete(MAIN_SPREADSHEET_ID);
                 }
-            });
+            }); */
 
         	if (data != null) {
                 var tasks = COMPONENT_CONTAINER.getByType('Task');
