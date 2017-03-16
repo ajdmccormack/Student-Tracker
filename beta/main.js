@@ -1,6 +1,14 @@
 'use strict';
 
-class Drive {}
+class Drive {
+    constructor (childFolderId) {
+        this._childFolderId = childFolderId;
+    }
+
+    get childFolderId() {
+        return this._childFolderId;
+    }
+}
 
 Drive.Files = class {
     static copy(fileId, resource) {
@@ -168,24 +176,35 @@ class ComponentContainer {
     }
 
     update() {
-        var lock = false;
+        var chain = new Promise(function (resolve, reject) {
+            resolve();
+        });
 
-        for (var component of this._components) {
-            if (!lock) {
-                component.enable();
-            } else {
-                component.disable();
+        for (let i = 0, count = 0; i < this._components.length; i++) {
+            const component = this._components[i];
+
+            if (!component.isEnabled) {
+                chain = chain.then(function () {
+                    var ret = component.enable();
+
+                    if (count % 3 == 0) {
+                        return ret;
+                    }
+                });
+
+                if (component instanceof Clone) {
+                    count++;
+                }
             }
 
             if (component instanceof Assessment && !component.isCompleted) {
-                lock = true;
+                return;
             }
         }
     }
 
     onSignIn() {
         var clones = this.getByType('Clone');
-        var chain;
 
         if (clones.length != 0) {
             const HOSTNAME = window.location.hostname.match(/\.(.+)\./)[1];
@@ -219,7 +238,7 @@ class ComponentContainer {
                 return Drive.Files.list("mimeType = 'application/vnd.google-apps.folder' and '" + parentFolderId + "' in parents and properties has {key = 'id' and value = '" + PATHNAME + "'}")
             });
 
-            var folder = Promise.all([parent, child]).then(function (values) {
+            drive = new Drive(Promise.all([parent, child]).then(function (values) {
                 var parentFolderId = values[0];
                 var files = values[1];
 
@@ -241,21 +260,7 @@ class ComponentContainer {
                         return file.id;
                     });
                 }
-            }.bind(this)).then(function (childFolderId) {
-                chain = clones[0].onSignIn(childFolderId);
-
-                for (let i = 1; i < clones.length; i += (i + 2 < clones.length) ? 3 : 1) {
-                    chain = chain.then(function () {
-                        clones[i].onSignIn(childFolderId);
-                        
-                        if (i + 2 < clones.length) {
-                            clones[i + 1].onSignIn(childFolderId);
-
-                            return clones[i + 2].onSignIn(childFolderId);
-                        }
-                    });
-                }
-            });
+            }.bind(this)));
         }
     }
 
@@ -271,8 +276,8 @@ class ComponentContainer {
 }
 
 class Component {
-	constructor (element, id) {
-	    this._element = element;
+	constructor (node, id) {
+	    this._element = node.parentElement;
 
         this._types = ['Component'];
 
@@ -290,13 +295,9 @@ class Component {
             return children;
         }(this._element, []);
 
-        for (var node of this._element.childNodes) {
-            if (node.nodeType == 3 && node.data.includes(id)) {
-                node.data = node.data.replace(id, '');
+        this._isEnabled = false;
 
-                break;
-            }
-        }
+        node.data = node.data.replace(id, '');
 	}
 
 	enable() {
@@ -307,6 +308,8 @@ class Component {
             element.onclick = function () {};
             element.style.setProperty('color', '');
         });
+
+        this._isEnabled = true;
     }
 
     disable() {
@@ -321,6 +324,12 @@ class Component {
             };
             element.style.setProperty('color', 'gray', 'important');
         });
+
+        this._isEnabled = false;
+    }
+
+    get isEnabled() {
+        return this._isEnabled;
     }
 
     get types() {
@@ -329,8 +338,8 @@ class Component {
 }
 
 class Task extends Component {
-    constructor (index, element, id) {
-    	super(element, id);
+    constructor (index, node, id) {
+    	super(node, id);
 
         this._index = index;
 
@@ -349,8 +358,8 @@ class Task extends Component {
 }
 
 class Assignment extends Task {
-    constructor (index, element) {
-        super(index, element, ASSIGNMENT_ID);
+    constructor (index, node) {
+        super(index, node, ASSIGNMENT_ID);
 
         this._types[this._types.length] = 'Assignment';
 
@@ -391,8 +400,8 @@ class Assignment extends Task {
 }
 
 class Assessment extends Task {
-    constructor (index, element, assessmentIndex) {
-        super(index, element, ASSESSMENT_ID);
+    constructor (index, node, assessmentIndex) {
+        super(index, node, ASSESSMENT_ID);
 
         this._assessmentIndex = assessmentIndex;
 
@@ -489,8 +498,8 @@ class Assessment extends Task {
 }
 
 class Clone extends Component {
-    constructor (element) {
-        super(element, CLONE_ID);
+    constructor (node) {
+        super(node, CLONE_ID);
 
         this._element = function findElement(e) {
             if (e.tagName == 'A') {
@@ -510,14 +519,23 @@ class Clone extends Component {
         this._fileId = this._element.href.match(/(?:d\/|id=)(.{44})/)[1];
     }
 
-    onSignIn(childFolderId) {
-        var ret = Drive.Files.list("'" + childFolderId + "' in parents and properties has {key = 'id' and value = '" + this._fileId + "'}").then(function (files) {
+    enable() {
+        super.enable();
+
+        var files = drive.childFolderId.then(function (childFolderId) {
+            return Drive.Files.list("'" + childFolderId + "' in parents and properties has {key = 'id' and value = '" + this._fileId + "'}");
+        }.bind(this));
+
+        var ret = Promise.all([drive.childFolderId, files]).then(function (values) {
+            var childFolderId = values[0];
+            var files = values[1];
+
             if (files.length != 0) {
-                console.log('CLONE ' + this._index + ': Found file');
+                console.log('CLONE ' + this._fileId + ': Found file');
 
                 return Drive.Files.get(files[0].id, 'webViewLink');
             } else {
-                console.log('CLONE ' + this._index + ': Not Found file');
+                console.log('CLONE ' + this._fileId + ': Not Found file');
 
                 return Drive.Files.copy(this._fileId, {
                     properties: {
@@ -599,6 +617,7 @@ const ELEMENTS = [];
 const CHECKBOXES = [];
 
 var student;
+var drive;
 
 var buttonSignIn;
 var buttonSignOut;
@@ -626,32 +645,25 @@ function run() {
 
 	allElements.forEach(function (e) {
         if (e.tagName != 'SCRIPT') {
-    		var text = '';
-    		var childNode = e.firstChild;
+            for (var node = e.firstChild; node; node = node.nextSibling) {
+                if (node.nodeType == 3) {
+                    if (node.data.includes(ASSIGNMENT_ID)) {
+                        COMPONENT_CONTAINER.add(new Assignment(index, node));
 
-    		while (childNode) {
-    			if (childNode.nodeType == 3) {
-    				text += childNode.data;
-    			}
+                        index++;
+                    }
 
-    			childNode = childNode.nextSibling;
-    		}
+                    if (node.data.includes(ASSESSMENT_ID)) {
+                        COMPONENT_CONTAINER.add(new Assessment(index, node, assessmentIndex));
 
-    		if (text.includes(ASSIGNMENT_ID)) {
-    			COMPONENT_CONTAINER.add(new Assignment(index, e));
+                        index++;
+                        assessmentIndex++;
+                    }
 
-    	        index++;
-    		}
-
-            if (text.includes(ASSESSMENT_ID)) {
-                COMPONENT_CONTAINER.add(new Assessment(index, e, assessmentIndex));
-
-                index++;
-                assessmentIndex++;
-            }
-
-            if (text.includes(CLONE_ID)) {
-                COMPONENT_CONTAINER.add(new Clone(e));
+                    if (node.data.includes(CLONE_ID)) {
+                        COMPONENT_CONTAINER.add(new Clone(node));
+                    }
+                }
             }
         }
 	});
@@ -707,6 +719,8 @@ function updateSignInStatus(isSignedIn) {
 
         student = new Student(rawName, email);
 
+        COMPONENT_CONTAINER.onSignIn();
+
         student.getData().then(function (data) {
             Drive.Files.get(MAIN_SPREADSHEET_ID, 'ownedByMe').then(function (file) {
                 if (!file.ownedByMe) {
@@ -744,8 +758,6 @@ function updateSignInStatus(isSignedIn) {
 
         	COMPONENT_CONTAINER.update();
         });
-
-        COMPONENT_CONTAINER.onSignIn();
 
         buttonSignIn.style.display = 'none';
         buttonSignOut.style.display = '';
