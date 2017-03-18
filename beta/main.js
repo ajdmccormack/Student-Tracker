@@ -1,5 +1,15 @@
 'use strict';
 
+const API_KEY = 'AIzaSyD0kTBtlNzVae3u1LYcjZKrre563mcxsVo';
+const CLIENT_ID = '627343722694-fni1on670josisrndul45j23n0bim9a5.apps.googleusercontent.com';
+const MAIN_SPREADSHEET_ID = '1IIjBsBJrkgaGORKvsXruJpk-6xKC3clPnW_-AyqpUMw';
+const FORM_SPREADSHEET_ID = '1bJRdFCGP2yocIVXw6ewsDBALeUkYfrVoorf5DnBpAc4';
+const SHEET = 'Sheet1';
+const PROMPT_PERIOD = 'In which class period are you? (1, 2, 4, 5, 7)';
+const ASSIGNMENT_ID = '~';
+const ASSESSMENT_ID = '`';
+const CLONE_ID = '^';
+
 class Drive {
     constructor (childFolderId) {
         this._childFolderId = childFolderId;
@@ -218,18 +228,27 @@ class ComponentContainer {
                 } else {
                     console.log('CLONE: Not Found parent');
 
-                    return Drive.Files.createFolder(HOSTNAME, {
+                    var folder = Drive.Files.createFolder(HOSTNAME, {
                         properties: {
                             id: HOSTNAME
                         }
-                    }).then(function (file) {
-                        Drive.Permissions.create(file.id, {
+                    });
+
+                    var emailAddress = Drive.Files.get(MAIN_SPREADSHEET_ID, 'owners').then(function (obj) {
+                        return obj.owners[0].emailAddress;
+                    });
+
+                    return Promise.all([folder, emailAddress]).then(function (values) {
+                        var folder = values[0];
+                        var emailAddress = values[1];
+
+                        Drive.Permissions.create(folder.id, {
                             role: 'writer',
                             type: 'user',
-                            emailAddress: TEACHER_EMAIL
+                            emailAddress: emailAddress
                         });
 
-                        return file.id;
+                        return folder.id;
                     });
                 }
             }.bind(this));
