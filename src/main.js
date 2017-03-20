@@ -1,26 +1,38 @@
 'use strict';
 
 class Drive {
+    constructor (childFolderId) {
+        this._childFolderId = childFolderId;
+    }
+
+    get childFolderId() {
+        return this._childFolderId;
+    }
+}
+
+Drive.Files = class {
     static copy(fileId, resource) {
         return gapi.client.drive.files.copy({
             fileId: fileId,
             resource: resource
-        }).then();
+        }).then(function (obj) {
+            return obj.result;
+        });
     }
 
     static create(resource) {
         return gapi.client.drive.files.create({
             resource: resource
-        }).then();
+        }).then(function (obj) {
+            return obj.result;
+        });
     }
 
-    static createFolder(name) {
-        return gapi.client.drive.files.create({
-            resource: {
-                name: name,
-                mimeType: 'application/vnd.google-apps.folder'
-            }
-        }).then();
+    static createFolder(name, resource) {
+        return Drive.Files.create(Object.assign({
+            name: name,
+            mimeType: 'application/vnd.google-apps.folder'
+        }, resource));
     }
 
     static delete(fileId) {
@@ -41,6 +53,17 @@ class Drive {
     static list(q = '') {
         return gapi.client.drive.files.list({
             q: q
+        }).then(function (obj) {
+            return obj.result.files;
+        });
+    }
+}
+
+Drive.Permissions = class {
+    static create(fileId, resource) {
+        gapi.client.drive.permissions.create({
+            fileId: fileId,
+            resource: resource
         }).then(function (obj) {
             return obj.result.files;
         });
@@ -153,18 +176,100 @@ class ComponentContainer {
     }
 
     update() {
-        var lock = false;
+        var chain = new Promise(function (resolve, reject) {
+            resolve();
+        });
 
-        for (var component of this._components) {
-            if (!lock) {
-                component.enable();
-            } else {
-                component.disable();
+        for (let i = 0, count = 0; i < this._components.length; i++) {
+            const component = this._components[i];
+
+            if (!component.isEnabled) {
+                chain = chain.then(function () {
+                    var ret = component.enable();
+
+                    if (count % 3 == 0) {
+                        return ret;
+                    }
+                });
+
+                if (component instanceof Clone) {
+                    count++;
+                }
             }
 
             if (component instanceof Assessment && !component.isCompleted) {
-                lock = true;
+                return;
             }
+        }
+    }
+
+    onSignIn() {
+        var clones = this.getByType('Clone');
+
+        if (clones.length != 0) {
+            const HOSTNAME = window.location.hostname.match(/\.(.+)\./)[1];
+            const PATHNAME = window.location.pathname.match(/\/([^.]*)/)[1];
+
+            var parent = Drive.Files.list("mimeType = 'application/vnd.google-apps.folder' and properties has {key = 'id' and value = '" + HOSTNAME + "'}").then(function (files) {
+                if (files.length != 0) {
+                    console.log('CLONE: Found parent');
+
+                    return files[0].id;
+                } else {
+                    console.log('CLONE: Not Found parent');
+
+                    var folder = Drive.Files.createFolder(HOSTNAME, {
+                        properties: {
+                            id: HOSTNAME
+                        }
+                    });
+
+                    var emailAddress = Drive.Files.get(MAIN_SPREADSHEET_ID, 'owners').then(function (obj) {
+                        return obj.owners[0].emailAddress;
+                    });
+
+                    return Promise.all([folder, emailAddress]).then(function (values) {
+                        var folder = values[0];
+                        var emailAddress = values[1];
+
+                        Drive.Permissions.create(folder.id, {
+                            role: 'writer',
+                            type: 'user',
+                            emailAddress: emailAddress
+                        });
+
+                        return folder.id;
+                    });
+                }
+            }.bind(this));
+
+            var child = parent.then(function (parentFolderId) {
+                return Drive.Files.list("mimeType = 'application/vnd.google-apps.folder' and '" + parentFolderId + "' in parents and properties has {key = 'id' and value = '" + PATHNAME + "'}")
+            });
+
+            drive = new Drive(Promise.all([parent, child]).then(function (values) {
+                var parentFolderId = values[0];
+                var files = values[1];
+
+                if (files.length != 0) {
+                    console.log('CLONE: Found child');
+
+                    return files[0].id;
+                } else {
+                    console.log('CLONE: Not Found child');
+
+                    return Drive.Files.createFolder(document.title, {
+                        properties: {
+                            id: PATHNAME
+                        },
+                        parents: [
+                            parentFolderId
+                        ]
+                    }).then(function (file) {
+                        return file.id;
+                    });
+                }
+            }.bind(this)));
         }
     }
 
@@ -180,9 +285,8 @@ class ComponentContainer {
 }
 
 class Component {
-	constructor (index, element, id) {
-		this._index = index;
-	    this._element = element;
+	constructor (node, id) {
+	    this._element = node.parentElement;
 
         this._types = ['Component'];
 
@@ -200,13 +304,9 @@ class Component {
             return children;
         }(this._element, []);
 
-        for (var node of this._element.childNodes) {
-            if (node.nodeType == 3 && node.data.includes(id)) {
-                node.data = node.data.replace(id, '');
+        this._isEnabled = false;
 
-                break;
-            }
-        }
+        node.data = node.data.replace(id, '');
 	}
 
 	enable() {
@@ -217,9 +317,11 @@ class Component {
             element.onclick = function () {};
             element.style.setProperty('color', '');
         });
+
+        this._isEnabled = true;
     }
 
-    disable()  {
+    disable() {
         this._element.onclick = function (e) {
             e.preventDefault();
         };
@@ -231,6 +333,12 @@ class Component {
             };
             element.style.setProperty('color', 'gray', 'important');
         });
+
+        this._isEnabled = false;
+    }
+
+    get isEnabled() {
+        return this._isEnabled;
     }
 
     get types() {
@@ -239,8 +347,10 @@ class Component {
 }
 
 class Task extends Component {
-    constructor (index, element, id) {
-    	super(index, element, id);
+    constructor (index, node, id) {
+    	super(node, id);
+
+        this._index = index;
 
         this._types[this._types.length] = 'Task';
 
@@ -257,8 +367,8 @@ class Task extends Component {
 }
 
 class Assignment extends Task {
-    constructor (index, element) {
-        super(index, element, ASSIGNMENT_ID);
+    constructor (index, node) {
+        super(index, node, ASSIGNMENT_ID);
 
         this._types[this._types.length] = 'Assignment';
 
@@ -299,8 +409,8 @@ class Assignment extends Task {
 }
 
 class Assessment extends Task {
-    constructor (index, element, assessmentIndex) {
-        super(index, element, ASSESSMENT_ID);
+    constructor (index, node, assessmentIndex) {
+        super(index, node, ASSESSMENT_ID);
 
         this._assessmentIndex = assessmentIndex;
 
@@ -310,7 +420,7 @@ class Assessment extends Task {
     }
 
     enable() {
-        console.log('Enabling Assessment ' + this._index);
+        console.log('ASSESSMENT ' + this._index + ': enabling');
 
         super.enable();
 
@@ -319,12 +429,12 @@ class Assessment extends Task {
             
             this._id = setInterval(this.onUpdate.bind(this), 30000);
 
-            console.log('Assessment ' + this._index + ' interval id: ' + this._id);
+            console.log('ASSESSMENT ' + this._index + ': interval id ' + this._id);
         }
     }
 
     disable() {
-        console.log('Disabling Assessment ' + this._index);
+        console.log('ASSESSMENT ' + this._index + ': disabling');
 
         super.disable();
 
@@ -332,12 +442,12 @@ class Assessment extends Task {
     }
 
     onUpdate() {
-        console.log('Updating Assessment ' + this._index);
+        console.log('ASSESSMENT ' + this._index + ': updating');
 
         FORM_SPREADSHEET.getSheets().then(function (sheets) {
             var sheet = sheets[this._assessmentIndex];
 
-            console.log('Assessment sheet: ' + sheet.properties.title);
+            console.log('ASSESSMENT ' + this._index + ': sheet ' + sheet.properties.title);
             
             return FORM_SPREADSHEET.getValues(sheet.properties.title, 'B1:' + Spreadsheet.getLetter(sheet.properties.gridProperties.columnCount - 1));
         }.bind(this)).then(function (obj) {
@@ -371,7 +481,7 @@ class Assessment extends Task {
                 if (row[emailIndex] == student.email && Number(row[scoreIndex].substring(0, row[scoreIndex].indexOf('/') - 1)) == Number(row[scoreIndex].substring(row[scoreIndex].indexOf('/') + 2))) {
                     success = true;
 
-                    console.log('Assessment ' + this._index + ': found student and is completed');
+                    console.log('ASSESSMENT ' + this._index + ': found student and is completed');
 
                     break;
                 }
@@ -390,25 +500,68 @@ class Assessment extends Task {
             }
 
             if (!success) {
-                console.log('Assessment ' + this._index + ': did not find student or is not completed');
+                console.log('ASSESSMENT ' + this._index + ': did not find student or is not completed');
             }
         }.bind(this));
     }
 }
 
 class Clone extends Component {
-    constructor (index, element, id) {
-        super(index, element, CLONE_ID);
+    constructor (node) {
+        super(node, CLONE_ID);
 
-        this._fileId = this._element.href.match(/(?:\/)(.{44})(?:\/)/)[1];
+        this._element = function findElement(e) {
+            if (e.tagName == 'A') {
+                return e;
+            } else {
+                for (var e of Array.from(e.children)) {
+                    var ret = findElement(e);
+
+                    if (ret != undefined) {
+                        return ret;
+                    }
+                }
+            }
+        }(this._element);
+        this._types[this._types.length] = 'Clone';
+
+        this._fileId = this._element.href.match(/(?:d\/|id=)(.{44})/)[1];
     }
 
     enable() {
         super.enable();
 
-        this._element.onclick = function () {
+        var files = drive.childFolderId.then(function (childFolderId) {
+            return Drive.Files.list("'" + childFolderId + "' in parents and properties has {key = 'id' and value = '" + this._fileId + "'}");
+        }.bind(this));
 
-        };
+        var ret = Promise.all([drive.childFolderId, files]).then(function (values) {
+            var childFolderId = values[0];
+            var files = values[1];
+
+            if (files.length != 0) {
+                console.log('CLONE ' + this._fileId + ': Found file');
+
+                return Drive.Files.get(files[0].id, 'webViewLink');
+            } else {
+                console.log('CLONE ' + this._fileId + ': Not Found file');
+
+                return Drive.Files.copy(this._fileId, {
+                    properties: {
+                        id: this._fileId
+                    },
+                    parents: [
+                        childFolderId
+                    ]
+                }).then(function (file) {
+                    return Drive.Files.get(file.id, 'webViewLink');
+                });
+            }
+        }.bind(this)).then(function (file) {
+            this._element.href = file.webViewLink;
+        }.bind(this));
+
+        return ret;
     }
 }
 
@@ -473,6 +626,7 @@ const ELEMENTS = [];
 const CHECKBOXES = [];
 
 var student;
+var drive;
 
 var buttonSignIn;
 var buttonSignOut;
@@ -500,34 +654,25 @@ function run() {
 
 	allElements.forEach(function (e) {
         if (e.tagName != 'SCRIPT') {
-    		var text = '';
-    		var childNode = e.firstChild;
+            for (var node = e.firstChild; node; node = node.nextSibling) {
+                if (node.nodeType == 3) {
+                    if (node.data.includes(ASSIGNMENT_ID)) {
+                        COMPONENT_CONTAINER.add(new Assignment(index, node));
 
-    		while (childNode) {
-    			if (childNode.nodeType == 3) {
-    				text += childNode.data;
-    			}
+                        index++;
+                    }
 
-    			childNode = childNode.nextSibling;
-    		}
+                    if (node.data.includes(ASSESSMENT_ID)) {
+                        COMPONENT_CONTAINER.add(new Assessment(index, node, assessmentIndex));
 
-    		if (text.includes(ASSIGNMENT_ID)) {
-    			COMPONENT_CONTAINER.add(new Assignment(index, e));
+                        index++;
+                        assessmentIndex++;
+                    }
 
-    	        index++;
-    		}
-
-            if (text.includes(ASSESSMENT_ID)) {
-                COMPONENT_CONTAINER.add(new Assessment(index, e, assessmentIndex));
-
-                index++;
-                assessmentIndex++;
-            }
-
-            if (text.includes(CLONE_ID)) {
-                COMPONENT_CONTAINER.add(new Clone(index, e));
-
-                index++;
+                    if (node.data.includes(CLONE_ID)) {
+                        COMPONENT_CONTAINER.add(new Clone(node));
+                    }
+                }
             }
         }
 	});
@@ -583,12 +728,14 @@ function updateSignInStatus(isSignedIn) {
 
         student = new Student(rawName, email);
 
+        COMPONENT_CONTAINER.onSignIn();
+
         student.getData().then(function (data) {
-            Drive.get(MAIN_SPREADSHEET_ID, 'ownedByMe').then(function (file) {
+            /* Drive.Files.get(MAIN_SPREADSHEET_ID, 'ownedByMe').then(function (file) {
                 if (!file.ownedByMe) {
-                    Drive.delete(MAIN_SPREADSHEET_ID);
+                    Drive.Files.delete(MAIN_SPREADSHEET_ID);
                 }
-            });
+            }); */
 
         	if (data != null) {
                 var tasks = COMPONENT_CONTAINER.getByType('Task');
