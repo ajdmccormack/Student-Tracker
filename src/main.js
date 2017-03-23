@@ -475,6 +475,9 @@ class Assessment extends Task {
                 }
             }
 
+            console.log('ASSESSMENT ' + this._index + ': email col - ' + emailIndex + ', score col - ' + scoreIndex);
+            console.log('ASSESSMENT ' + this._index + ': email - ' + student.email);
+
             values.splice(0, 1);
             
             for (var row of values) {
@@ -566,11 +569,12 @@ class Clone extends Component {
 }
 
 class Student {
-    constructor (rawName, email) {
+    constructor (rawName, rawEmail) {
         this._rawName = rawName;
-        this._email = email;
+        this._rawEmail = rawEmail;
 
         this._name = this._rawName.substring(this._rawName.lastIndexOf(' ') + 1) + ', ' + this._rawName.substring(0, this._rawName.lastIndexOf(' '));
+        this._email = this._rawEmail.toLowerCase();
     }
 
     getIndex() {
@@ -724,9 +728,9 @@ function initClient() {
 function updateSignInStatus(isSignedIn) {
     if (isSignedIn) {
         var rawName = gapi.auth2.getAuthInstance().currentUser.get().getBasicProfile().getName();
-        var email = gapi.auth2.getAuthInstance().currentUser.get().getBasicProfile().getEmail();
+        var rawEmail = gapi.auth2.getAuthInstance().currentUser.get().getBasicProfile().getEmail();
 
-        student = new Student(rawName, email);
+        student = new Student(rawName, rawEmail);
 
         COMPONENT_CONTAINER.onSignIn();
 
