@@ -187,7 +187,7 @@ class ComponentContainer {
                 chain = chain.then(function () {
                     var ret = component.enable();
 
-                    if (count % 3 == 0) {
+                    if (count % 2 == 0) {
                         return ret;
                     }
                 });
